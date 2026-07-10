@@ -1,6 +1,6 @@
 {
   "name": "notedux",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Take notes from terminal",
   "bin": {
     "notedux": "notedux"

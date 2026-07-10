@@ -32,7 +32,7 @@ Commands:
   settoken <token>     Set token
   delall               Delete all note content
   dellast              Delete last line
-  dell <number>        Delete line by number
+  del <number>         Delete line by number
 
 Options:
 
@@ -419,7 +419,7 @@ case "$COMMAND" in
         ;;
 
 
-    dell)
+    del)
         get_token
         delete_line "$1"
         ;;
