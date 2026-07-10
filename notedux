@@ -1,0 +1,435 @@
+#!/bin/bash
+
+# Notedux CLI - Command-line client for the Notedux service (notedux.com).
+# Copyright (C) 2026 Dejan Sabados
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+CONFIG_FILE="$HOME/.notedux.conf"
+API="https://notedux.com/api/note"
+
+show_help() {
+cat <<EOF
+
+Notedux CLI - Command-line client for the Notedux service (notedux.com).
+Copyright (C) 2026 Dejan Sabados
+Licensed under the GNU GPL v3 or later.
+This program comes with ABSOLUTELY NO WARRANTY.
+
+Usage:
+  notedux <command> [arguments]
+
+Commands:
+
+  show                 Show current note
+  add <text>           Add new line
+  set <text>           Replace note content
+  generate             Generate new token
+  deltoken             Delete saved token
+  settoken <token>     Set token
+  delall               Delete all note content
+  dellast              Delete last line
+  dell <number>        Delete line by number
+
+Options:
+
+  -h, --help           Show this help
+
+Examples:
+
+  notedux generate
+  notedux add "Do one thing and do it well."
+  notedux show
+  notedux dell 3
+
+EOF
+}
+
+
+load_config() {
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    fi
+}
+
+
+save_token() {
+    echo "DEFAULT_TOKEN=\"$1\"" > "$CONFIG_FILE"
+}
+
+
+delete_token() {
+    read -p "Are you sure you want to delete the token? [y/N] " answer
+
+    case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
+            rm -f "$CONFIG_FILE"
+            echo "Token deleted."
+            ;;
+        *)
+            echo "Operation cancelled."
+            ;;
+    esac
+}
+
+
+confirm() {
+    read -p "$1 [y/N]: " answer
+
+    case "$answer" in
+        y|Y)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+generate_token() {
+
+    if grep -q '^DEFAULT_TOKEN=' "$CONFIG_FILE" 2>/dev/null; then
+        echo "Default token is already set."
+        return 1
+    fi
+    echo "Generating token..."
+
+    RESPONSE=$(curl -s -X POST "$API/create")
+
+    TOKEN=$(echo "$RESPONSE" \
+        | grep -o '"token"[ ]*:[ ]*"[^"]*"' \
+        | sed 's/.*:\s*"//;s/"//')
+
+
+    if [ -z "$TOKEN" ]; then
+        echo "Error: cannot generate token."
+        echo "$RESPONSE"
+        exit 1
+    fi
+
+
+    save_token "$TOKEN"
+
+    echo "Token generated."
+    echo "$TOKEN"
+}
+
+
+get_token() {
+
+    if [ -z "$TOKEN" ]; then
+        TOKEN="$DEFAULT_TOKEN"
+    fi
+
+
+    if [ -z "$TOKEN" ]; then
+        generate_token
+        TOKEN="$DEFAULT_TOKEN"
+    fi
+}
+
+
+show_note() {
+
+    HEADERS=$(mktemp)
+
+    RESPONSE=$(curl -s -D "$HEADERS" \
+        -w "\n%{http_code}" \
+        -X POST \
+        "$API/get" \
+        --data-urlencode "token=$TOKEN")
+    echo ""
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    RESPONSE=$(echo "$RESPONSE" | sed '$d')
+    
+    LINK=$(grep -i '^x-note-link:' "$HEADERS" | cut -d' ' -f2- | tr -d '\r')
+    if [ "$HTTP_CODE" == "200" ]; then
+        echo "$RESPONSE"| nl -ba
+        echo ""
+        echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+        echo "$LINK" | pbcopy
+    else
+        echo "$RESPONSE"
+        echo ""
+    fi
+
+}
+
+
+add_note() {
+
+    TEXT="$*"
+
+    if [ -z "$TEXT" ]; then
+        echo "Error: text missing."
+        exit 1
+    fi
+
+
+
+    HEADERS=$(mktemp)
+
+    RESPONSE=$(curl -s -D "$HEADERS" \
+        -w "\n%{http_code}" \
+        -X POST \
+        "$API/add" \
+            --data-urlencode "token=$TOKEN" \
+            --data-urlencode "text=$TEXT")
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    RESPONSE=$(echo "$RESPONSE" | sed '$d')
+    echo ""
+    echo "$RESPONSE"
+    echo ""
+    LINK="https://notedux.com/n/$TOKEN"
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+        echo "$LINK" | pbcopy
+    fi
+}
+
+
+set_note() {
+
+    read -p "The content of the note will be overwritten. Are you sure ? [y/N] " answer
+
+    case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
+            TEXT="$*"
+            if [ -z "$TEXT" ]; then
+                echo "Error: text missing."
+                exit 1
+            fi
+            HEADERS=$(mktemp)
+            RESPONSE=$(curl -s -D "$HEADERS" \
+                -w "\n%{http_code}" \
+                -X POST \
+                "$API/set" \
+                    --data-urlencode "token=$TOKEN" \
+                    --data-urlencode "text=$TEXT")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            RESPONSE=$(echo "$RESPONSE" | sed '$d')
+            echo ""
+            echo "$RESPONSE"
+            echo ""
+            LINK="https://notedux.com/n/$TOKEN"
+            if [ "$HTTP_CODE" = "200" ]; then
+                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                echo "$LINK" | pbcopy
+            fi
+            ;;
+        *)
+            echo "Operation cancelled."
+            ;;
+    esac
+}
+
+
+
+delete_all() {
+
+    read -p "Delete complete note. Are you sure ? [y/N] " answer
+
+    case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
+            HEADERS=$(mktemp)
+            RESPONSE=$(curl -s -D "$HEADERS" \
+                -w "\n%{http_code}" \
+                -X POST \
+                "$API/deleteall" \
+                    --data-urlencode "token=$TOKEN")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            RESPONSE=$(echo "$RESPONSE" | sed '$d')
+            echo ""
+            echo "$RESPONSE"
+            echo ""
+            LINK="https://notedux.com/n/$TOKEN"
+            if [ "$HTTP_CODE" = "200" ]; then
+                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                echo "$LINK" | pbcopy
+            fi
+            ;;
+        *)
+            echo "Operation cancelled."
+            ;;
+    esac
+}
+
+
+delete_last() {
+
+    if ! confirm "Delete last line"; then
+        echo "Cancelled."
+        exit
+    fi
+
+
+    RESPONSE=$(curl -s -X POST "$API/dellast" \
+        --data-urlencode "token=$TOKEN")
+
+    echo "$RESPONSE"
+    # get and show the link to the note 
+    LINK=$(echo "$RESPONSE" | grep -o '"link"[ ]*:[ ]*"[^"]*"' | sed 's/.*:\s*"//;s/"//')
+    echo "$LINK" | pbcopy
+    echo -e "\033[1;34m$LINK\033[0m"
+    echo "Copied to clipboard."
+}
+delete_last() {
+
+    read -p "Delete last line. Are you sure ? [y/N] " answer
+
+    case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
+            HEADERS=$(mktemp)
+            RESPONSE=$(curl -s -D "$HEADERS" \
+                -w "\n%{http_code}" \
+                -X POST \
+                "$API/deletelast" \
+                    --data-urlencode "token=$TOKEN")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            RESPONSE=$(echo "$RESPONSE" | sed '$d')
+            echo ""
+            echo "$RESPONSE"
+            echo ""
+            LINK="https://notedux.com/n/$TOKEN"
+            if [ "$HTTP_CODE" = "200" ]; then
+                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                echo "$LINK" | pbcopy
+            fi
+            ;;
+        *)
+            echo "Operation cancelled."
+            ;;
+    esac
+}
+
+delete_line() {
+    
+    NUMBER="$1"
+    if [ -z "$NUMBER" ]; then
+        echo "Error: line number required."
+        echo "Usage: notedux dell <number>"
+        exit 1
+    fi
+    read -p "Delete line $NUMBER. Are you sure ? [y/N] " answer
+
+    case "$answer" in
+        [Yy]|[Yy][Ee][Ss])
+            HEADERS=$(mktemp)
+            RESPONSE=$(curl -s -D "$HEADERS" \
+                -w "\n%{http_code}" \
+                -X POST \
+                "$API/deleten" \
+                    --data-urlencode "token=$TOKEN" \
+                    --data-urlencode "line=$NUMBER")
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            RESPONSE=$(echo "$RESPONSE" | sed '$d')
+            echo ""
+            echo "$RESPONSE"
+            echo ""
+            LINK="https://notedux.com/n/$TOKEN"
+            if [ "$HTTP_CODE" = "200" ]; then
+                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                echo "$LINK" | pbcopy
+            fi
+            ;;
+        *)
+            echo "Operation cancelled."
+            ;;
+    esac
+}
+
+
+
+# -------------------------
+# MAIN
+# -------------------------
+
+
+load_config
+
+
+if [ $# -eq 0 ]; then
+    show_help
+    exit
+fi
+
+
+case "$1" in
+
+    -h|--help)
+        show_help
+        exit
+        ;;
+
+esac
+
+
+COMMAND="$1"
+shift
+
+
+case "$COMMAND" in
+
+    generate)
+        generate_token
+        ;;
+
+
+    show)
+        get_token
+        show_note
+        ;;
+
+
+    add)
+        get_token
+        add_note "$@"
+        ;;
+
+
+    set)
+        get_token
+        set_note "$@"
+        ;;
+
+
+    deltoken)
+        delete_token
+        ;;
+
+    settoken)
+        delete_token
+        save_token "$@"
+        ;;
+
+
+    delall)
+        get_token
+        delete_all
+        ;;
+
+
+    dellast)
+        get_token
+        delete_last
+        ;;
+
+
+    dell)
+        get_token
+        delete_line "$1"
+        ;;
+
+
+    *)
+        echo "Unknown command: $COMMAND"
+        echo
+        show_help
+        exit 1
+        ;;
+
+esac

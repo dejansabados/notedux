@@ -1,0 +1,21 @@
+{
+  "name": "notedux",
+  "version": "1.0.5",
+  "description": "Take notes from terminal",
+  "bin": {
+    "notedux": "notedux"
+  },
+  "files": [
+    "notedux",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "notes",
+    "cli",
+    "terminal"
+  ],
+  "author": "Dejan Sabados",
+  "license": "GPL-2.0-only",
+  "preferGlobal": true
+}
