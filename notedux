@@ -15,7 +15,7 @@ show_help() {
 cat <<EOF
 
 Notedux CLI - Command-line client for the Notedux service (notedux.com).
-Version 1.0.9
+Version 1.0.10
 Copyright (C) 2026 Dejan Sabados
 Licensed under the GNU GPL v3 or later.
 This program comes with ABSOLUTELY NO WARRANTY.
