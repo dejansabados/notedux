@@ -11,11 +11,96 @@
 CONFIG_FILE="$HOME/.notedux.conf"
 API="https://notedux.com/api/note"
 
+# -------------------------
+# Platform / dependency check
+# -------------------------
+
+# Detects OS and picks a clipboard command. Exits with a helpful message
+# if something required is missing.
+check_compatibility() {
+
+    OS_NAME="$(uname -s)"
+
+    case "$OS_NAME" in
+        Darwin)
+            PLATFORM="mac"
+            ;;
+        Linux)
+            PLATFORM="linux"
+            ;;
+        *)
+            echo "Error: unsupported operating system ($OS_NAME)."
+            echo "Notedux CLI supports macOS and Linux only."
+            exit 1
+            ;;
+    esac
+
+    # curl is required everywhere
+    if ! command -v curl &>/dev/null; then
+        echo "Error: 'curl' is required but not installed."
+        case "$PLATFORM" in
+            mac)
+                echo "Install it with: brew install curl"
+                ;;
+            linux)
+                echo "Install it with your package manager, e.g.:"
+                echo "  sudo apt install curl      (Debian/Ubuntu)"
+                echo "  sudo dnf install curl      (Fedora)"
+                echo "  sudo pacman -S curl        (Arch)"
+                ;;
+        esac
+        exit 1
+    fi
+
+    # Clipboard tool: pick the first available one per platform.
+    CLIPBOARD_CMD=""
+
+    if [ "$PLATFORM" = "mac" ]; then
+        if command -v pbcopy &>/dev/null; then
+            CLIPBOARD_CMD="pbcopy"
+        fi
+    else
+        if command -v xclip &>/dev/null; then
+            CLIPBOARD_CMD="xclip -selection clipboard"
+        elif command -v xsel &>/dev/null; then
+            CLIPBOARD_CMD="xsel --clipboard --input"
+        elif command -v wl-copy &>/dev/null; then
+            CLIPBOARD_CMD="wl-copy"
+        fi
+    fi
+
+    # No clipboard tool found - warn once, don't block usage.
+    if [ -z "$CLIPBOARD_CMD" ]; then
+        CLIPBOARD_WARNED=1
+        if [ "$PLATFORM" = "mac" ]; then
+            echo "Warning: 'pbcopy' not found. Links will not be copied to clipboard."
+        else
+            echo "Warning: no clipboard tool found (xclip, xsel, or wl-copy)."
+            echo "Links will not be copied to clipboard. Install one with, e.g.:"
+            echo "  sudo apt install xclip     (Debian/Ubuntu, X11)"
+            echo "  sudo dnf install xclip     (Fedora, X11)"
+            echo "  sudo pacman -S xclip       (Arch, X11)"
+            echo "  sudo apt install wl-clipboard   (Wayland)"
+        fi
+    fi
+}
+
+# Copies stdin to the clipboard using whatever tool was detected.
+# Silently does nothing if no clipboard tool is available.
+copy_to_clipboard() {
+    if [ -n "$CLIPBOARD_CMD" ]; then
+        eval "$CLIPBOARD_CMD"
+    else
+        cat >/dev/null
+    fi
+}
+
+
 show_help() {
 cat <<EOF
 
 Notedux CLI - Command-line client for the Notedux service (notedux.com).
-Version 1.0.10
+Version 1.0.11
 Copyright (C) 2026 Dejan Sabados
 Licensed under the GNU GPL v3 or later.
 This program comes with ABSOLUTELY NO WARRANTY.
@@ -44,7 +129,7 @@ Examples:
   notedux generate
   notedux add "Do one thing and do it well."
   notedux show
-  notedux dell 3
+  notedux del 3
 
 EOF
 }
@@ -149,13 +234,17 @@ show_note() {
     echo ""
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     RESPONSE=$(echo "$RESPONSE" | sed '$d')
-    
+
     LINK=$(grep -i '^x-note-link:' "$HEADERS" | cut -d' ' -f2- | tr -d '\r')
     if [ "$HTTP_CODE" == "200" ]; then
         echo "$RESPONSE"| nl -ba
         echo ""
-        echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-        echo "$LINK" | pbcopy
+        echo "$LINK" | copy_to_clipboard
+        if [ -n "$CLIPBOARD_CMD" ]; then
+            echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+        else
+            echo -e "Link: \033[1;34m$LINK\033[0m"
+        fi
     else
         echo "$RESPONSE"
         echo ""
@@ -190,8 +279,12 @@ add_note() {
     echo ""
     LINK="https://notedux.com/n/$TOKEN"
     if [ "$HTTP_CODE" = "200" ]; then
-        echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-        echo "$LINK" | pbcopy
+        echo "$LINK" | copy_to_clipboard
+        if [ -n "$CLIPBOARD_CMD" ]; then
+            echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+        else
+            echo -e "Link: \033[1;34m$LINK\033[0m"
+        fi
     fi
 }
 
@@ -221,8 +314,12 @@ set_note() {
             echo ""
             LINK="https://notedux.com/n/$TOKEN"
             if [ "$HTTP_CODE" = "200" ]; then
-                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-                echo "$LINK" | pbcopy
+                echo "$LINK" | copy_to_clipboard
+                if [ -n "$CLIPBOARD_CMD" ]; then
+                    echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                else
+                    echo -e "Link: \033[1;34m$LINK\033[0m"
+                fi
             fi
             ;;
         *)
@@ -252,8 +349,12 @@ delete_all() {
             echo ""
             LINK="https://notedux.com/n/$TOKEN"
             if [ "$HTTP_CODE" = "200" ]; then
-                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-                echo "$LINK" | pbcopy
+                echo "$LINK" | copy_to_clipboard
+                if [ -n "$CLIPBOARD_CMD" ]; then
+                    echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                else
+                    echo -e "Link: \033[1;34m$LINK\033[0m"
+                fi
             fi
             ;;
         *)
@@ -263,24 +364,6 @@ delete_all() {
 }
 
 
-delete_last() {
-
-    if ! confirm "Delete last line"; then
-        echo "Cancelled."
-        exit
-    fi
-
-
-    RESPONSE=$(curl -s -X POST "$API/dellast" \
-        --data-urlencode "token=$TOKEN")
-
-    echo "$RESPONSE"
-    # get and show the link to the note 
-    LINK=$(echo "$RESPONSE" | grep -o '"link"[ ]*:[ ]*"[^"]*"' | sed 's/.*:\s*"//;s/"//')
-    echo "$LINK" | pbcopy
-    echo -e "\033[1;34m$LINK\033[0m"
-    echo "Copied to clipboard."
-}
 delete_last() {
 
     read -p "Delete last line. Are you sure ? [y/N] " answer
@@ -300,8 +383,12 @@ delete_last() {
             echo ""
             LINK="https://notedux.com/n/$TOKEN"
             if [ "$HTTP_CODE" = "200" ]; then
-                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-                echo "$LINK" | pbcopy
+                echo "$LINK" | copy_to_clipboard
+                if [ -n "$CLIPBOARD_CMD" ]; then
+                    echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                else
+                    echo -e "Link: \033[1;34m$LINK\033[0m"
+                fi
             fi
             ;;
         *)
@@ -311,11 +398,11 @@ delete_last() {
 }
 
 delete_line() {
-    
+
     NUMBER="$1"
     if [ -z "$NUMBER" ]; then
         echo "Error: line number required."
-        echo "Usage: notedux dell <number>"
+        echo "Usage: notedux del <number>"
         exit 1
     fi
     read -p "Delete line $NUMBER. Are you sure ? [y/N] " answer
@@ -336,8 +423,12 @@ delete_line() {
             echo ""
             LINK="https://notedux.com/n/$TOKEN"
             if [ "$HTTP_CODE" = "200" ]; then
-                echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-                echo "$LINK" | pbcopy
+                echo "$LINK" | copy_to_clipboard
+                if [ -n "$CLIPBOARD_CMD" ]; then
+                    echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+                else
+                    echo -e "Link: \033[1;34m$LINK\033[0m"
+                fi
             fi
             ;;
         *)
@@ -352,6 +443,7 @@ delete_line() {
 # MAIN
 # -------------------------
 
+check_compatibility
 
 load_config
 
