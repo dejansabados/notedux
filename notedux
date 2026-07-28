@@ -60,13 +60,21 @@ check_compatibility() {
             CLIPBOARD_CMD="pbcopy"
         fi
     else
-        if command -v xclip &>/dev/null; then
-            CLIPBOARD_CMD="xclip -selection clipboard"
-        elif command -v xsel &>/dev/null; then
-            CLIPBOARD_CMD="xsel --clipboard --input"
-        elif command -v wl-copy &>/dev/null; then
+        # Linux: proveri da li X11 radi
+        if [ -n "$DISPLAY" ] && [ "$DISPLAY" != ":0" ]; then
+            # X11 je aktivan
+            if command -v xclip &>/dev/null; then
+                CLIPBOARD_CMD="xclip -selection clipboard"
+            elif command -v xsel &>/dev/null; then
+                CLIPBOARD_CMD="xsel --clipboard --input"
+            elif command -v wl-copy &>/dev/null; then
+                CLIPBOARD_CMD="wl-copy"
+            fi
+        elif command -v wl-copy &>/dev/null && [ -n "$WAYLAND_DISPLAY" ]; then
+            # Wayland
             CLIPBOARD_CMD="wl-copy"
         fi
+        # Ako nema X11 ili Wayland, CLIPBOARD_CMD ostaje prazan
     fi
 
     # No clipboard tool found - warn once, don't block usage.
@@ -75,16 +83,19 @@ check_compatibility() {
         if [ "$PLATFORM" = "mac" ]; then
             echo "Warning: 'pbcopy' not found. Links will not be copied to clipboard."
         else
-            echo "Warning: no clipboard tool found (xclip, xsel, or wl-copy)."
-            echo "Links will not be copied to clipboard. Install one with, e.g.:"
-            echo "  sudo apt install xclip     (Debian/Ubuntu, X11)"
-            echo "  sudo dnf install xclip     (Fedora, X11)"
-            echo "  sudo pacman -S xclip       (Arch, X11)"
-            echo "  sudo apt install wl-clipboard   (Wayland)"
+            if [ -z "$DISPLAY" ]; then
+                echo "Info: No X11 display detected. Clipboard disabled."
+            else
+                echo "Warning: no clipboard tool found (xclip, xsel, or wl-copy)."
+                echo "Links will not be copied to clipboard. Install one with, e.g.:"
+                echo "  sudo apt install xclip     (Debian/Ubuntu, X11)"
+                echo "  sudo dnf install xclip     (Fedora, X11)"
+                echo "  sudo pacman -S xclip       (Arch, X11)"
+                echo "  sudo apt install wl-clipboard   (Wayland)"
+            fi
         fi
     fi
 }
-
 # Copies stdin to the clipboard using whatever tool was detected.
 # Silently does nothing if no clipboard tool is available.
 copy_to_clipboard() {
@@ -100,7 +111,7 @@ show_help() {
 cat <<EOF
 
 Notedux CLI - Command-line client for the Notedux service (notedux.com).
-Version 1.0.11
+Version 1.0.12
 Copyright (C) 2026 Dejan Sabados
 Licensed under the GNU GPL v3 or later.
 This program comes with ABSOLUTELY NO WARRANTY.
