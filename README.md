@@ -1,6 +1,6 @@
 # Notedux CLI
 
-A fast command-line client for the Notedux note-taking service (https://notedux.com)
+A fast command-line client for the Notedux note-taking service https://notedux.com
 
 Create, read, update, delete, and list your notes directly from your terminal.
 
