@@ -1,6 +1,6 @@
 # Notedux CLI
 
-A command-line tool that turns terminal output into shareable, editable notes with Notedux (https://notedux.com).
+A command-line tool that turns terminal output into editable notes with Notedux (https://notedux.com).
 
 Pipe command output directly to Notedux, create notes from scripts, or manage your notes from the terminal. No login required.
 
