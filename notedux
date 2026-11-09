@@ -9,7 +9,7 @@
 # (at your option) any later version.
 
 CONFIG_FILE="$HOME/.notedux.conf"
-API="https://notedux.com/api/note"
+API="http://notedux.com/api/note"
 
 # -------------------------
 # Platform / dependency check
@@ -124,13 +124,15 @@ Commands:
   show                 Show current note
   add <text>           Add new line
   set <text>           Replace note content
+  add                  Add text from stdin / pipeline
+  set                  Replace note content from stdin / pipeline
   generate             Generate new token
   deltoken             Delete saved token
   settoken <token>     Set token
   delall               Delete all note content
   dellast              Delete last line
   del <number>         Delete line by number
-
+  
 Options:
 
   -h, --help           Show this help
@@ -140,7 +142,9 @@ Examples:
   notedux generate
   notedux add "Do one thing and do it well."
   notedux show
-  notedux del 3
+  notedux del 1
+  ls -la | notedux add
+  cat report.txt | notedux set
 
 EOF
 }
@@ -263,10 +267,26 @@ show_note() {
 
 }
 
+read_text_input() {
+
+    if [ $# -gt 0 ]; then
+        # Text passed as command arguments
+        printf '%s' "$*"
+
+    elif [ ! -t 0 ]; then
+        # Text received through stdin / pipe
+        cat
+
+    else
+        echo "Error: no input provided." >&2
+        return 1
+    fi
+}
 
 add_note() {
 
-    TEXT="$*"
+    TEXT=$(read_text_input "$@") || exit 1
+
 
     if [ -z "$TEXT" ]; then
         echo "Error: text missing."
@@ -302,43 +322,58 @@ add_note() {
 
 set_note() {
 
-    read -p "The content of the note will be overwritten. Are you sure ? [y/N] " answer
+    TEXT=$(read_text_input "$@") || exit 1
 
-    case "$answer" in
-        [Yy]|[Yy][Ee][Ss])
-            TEXT="$*"
-            if [ -z "$TEXT" ]; then
-                echo "Error: text missing."
-                exit 1
-            fi
-            HEADERS=$(mktemp)
-            RESPONSE=$(curl -s -D "$HEADERS" \
-                -w "\n%{http_code}" \
-                -X POST \
-                "$API/set" \
-                    --data-urlencode "token=$TOKEN" \
-                    --data-urlencode "text=$TEXT")
-            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-            RESPONSE=$(echo "$RESPONSE" | sed '$d')
-            echo ""
-            echo "$RESPONSE"
-            echo ""
-            LINK="https://notedux.com/n/$TOKEN"
-            if [ "$HTTP_CODE" = "200" ]; then
-                echo "$LINK" | copy_to_clipboard
-                if [ -n "$CLIPBOARD_CMD" ]; then
-                    echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
-                else
-                    echo -e "Link: \033[1;34m$LINK\033[0m"
-                fi
-            fi
-            ;;
-        *)
-            echo "Operation cancelled."
-            ;;
-    esac
+    if [ -z "$TEXT" ]; then
+        echo "Error: text missing."
+        exit 1
+    fi
+
+    if [ -e /dev/tty ]; then
+        read -p "The content of the note will be overwritten. Are you sure? [y/N] " answer </dev/tty
+
+        case "$answer" in
+            [Yy]|[Yy][Ee][Ss])
+                ;;
+            *)
+                echo "Operation cancelled."
+                return 1
+                ;;
+        esac
+    else
+        echo "Error: cannot request confirmation without a terminal."
+        echo "Run this command interactively."
+        return 1
+    fi
+
+    HEADERS=$(mktemp)
+
+    RESPONSE=$(curl -s -D "$HEADERS" \
+        -w "\n%{http_code}" \
+        -X POST \
+        "$API/set" \
+        --data-urlencode "token=$TOKEN" \
+        --data-urlencode "text=$TEXT")
+
+    HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+    RESPONSE=$(echo "$RESPONSE" | sed '$d')
+
+    echo ""
+    echo "$RESPONSE"
+    echo ""
+
+    LINK="https://notedux.com/n/$TOKEN"
+
+    if [ "$HTTP_CODE" = "200" ]; then
+        echo "$LINK" | copy_to_clipboard
+
+        if [ -n "$CLIPBOARD_CMD" ]; then
+            echo -e "Link: \033[1;34m$LINK\033[0m (Copied to clipboard.)"
+        else
+            echo -e "Link: \033[1;34m$LINK\033[0m"
+        fi
+    fi
 }
-
 
 
 delete_all() {

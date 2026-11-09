@@ -1,17 +1,43 @@
 # Notedux CLI
 
-A fast command-line client for the Notedux note-taking service https://notedux.com
+A command-line tool that turns terminal output into shareable, editable notes with Notedux (https://notedux.com).
 
-Create, read, update, delete, and list your notes directly from your terminal.
+Pipe command output directly to Notedux, create notes from scripts, or manage your notes from the terminal. No login required.
 
 ## Features
 
-- Create notes in seconds
-- View note content
-- Edit existing notes
-- Delete content of notes
-- No login required
-- Works on macOS and Linux
+- **Terminal pipelines** – Pipe output from any command directly into Notedux.
+- **Script integration** – Generate and update notes automatically from shell scripts.
+- **Create notes** – Create notes directly from your terminal.
+- **Read and update notes** – View and modify existing notes.
+- **No login required** – No accounts, passwords, or registration.
+- **Cross-platform** – Works on macOS and Linux.
+
+## Turn terminal output into formatted notes
+
+Notedux CLI supports Unix pipelines, allowing you to send the output of virtually any command directly to Notedux.
+
+For example, generate a server report and turn it into a shareable online note:
+
+```bash
+hostnamectl | notedux add
+```
+
+Or capture running Docker containers:
+
+```bash
+docker ps -a | notedux add
+```
+
+You can also pipe output from scripts, system commands, or other tools:
+
+```bash
+df -h | notedux add
+```
+
+Notedux creates or updates your note and returns a unique URL. Open that link in your browser to edit, format, organize, or export the content as a PDF.
+
+**Your terminal output becomes a shareable document in seconds.**
 
 ## Installation
 
