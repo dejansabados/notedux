@@ -9,7 +9,7 @@
 # (at your option) any later version.
 
 CONFIG_FILE="$HOME/.notedux.conf"
-API="http://notedux.com/api/note"
+API="https://notedux.com/api/note"
 
 # -------------------------
 # Platform / dependency check
@@ -111,7 +111,7 @@ show_help() {
 cat <<EOF
 
 Notedux CLI - Command-line client for the Notedux service (notedux.com).
-Version 1.0.13
+Version 1.0.14
 Copyright (C) 2026 Dejan Sabados
 Licensed under the GNU GPL v3 or later.
 This program comes with ABSOLUTELY NO WARRANTY.
